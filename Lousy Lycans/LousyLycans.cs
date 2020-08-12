@@ -23,6 +23,7 @@ using System.Collections.Generic;
 using DaggerfallWorkshop.Game.UserInterface;
 using DaggerfallConnect.Utility;
 using DaggerfallWorkshop.Game.Questing;
+using DaggerfallConnect.FallExe;
 
 public class LousyLycans : MonoBehaviour
 {
@@ -47,10 +48,11 @@ public class LousyLycans : MonoBehaviour
     static PlayerEnterExit playerEnterExit = GameManager.Instance.PlayerEnterExit;
     static DaggerfallDateTime timeNow = DaggerfallUnity.Instance.WorldTime.Now;
     static EntityEffectManager playerEffectManager = playerEntity.EntityBehaviour.GetComponent<EntityEffectManager>();
-    static bool realisticWagon = false;
-    static bool moonWarning = false;
+    static bool waxWarning = false;
+    static bool fullWarning = false;
     static bool fullMoon = false;
     static bool nightVision = false;
+    static bool beastWithRing = false;
     static int strAtt = 0;
     static int intAtt = 0;
     static int wilAtt = 0;
@@ -80,11 +82,7 @@ public class LousyLycans : MonoBehaviour
 
     private void Awake()
     {
-        Mod rw = ModManager.Instance.GetMod("Realistic Wagon");
-        if (rw != null)
-        {
-            realisticWagon = true;
-        }
+ 
     }
 
     private void Update()
@@ -102,6 +100,8 @@ public class LousyLycans : MonoBehaviour
                 GameObject lightsNode = new GameObject("NightVision");
                 lightsNode.transform.parent = player.transform;
                 AddLight(DaggerfallUnity.Instance, player.transform.gameObject, lightsNode.transform);
+                DropAllItems();
+                DaggerfallUI.MessageBox("You shed your clothes and items.");
             }
         }
         else if (nightVision)
@@ -239,31 +239,31 @@ public class LousyLycans : MonoBehaviour
         {
             if (timeNow.MassarLunarPhase == LunarPhases.ThreeWax)
             {
-                if (timeNow.IsNight && timeNow.Hour < 10 && !moonWarning)
+                if (timeNow.IsNight && timeNow.Hour < 10 && !waxWarning)
                 {
-                    moonWarning = true;
+                    waxWarning = true;
                     DaggerfallUI.AddHUDText("Masser is waxing, soon it will be a full moon...");
                 }
                 else if (timeNow.IsDay)
                 {
-                    moonWarning = false;
+                    waxWarning = false;
                 }
             }
             else if (timeNow.SecundaLunarPhase == LunarPhases.ThreeWax)
             {
-                if (timeNow.IsNight && timeNow.Hour < 10 && !moonWarning)
+                if (timeNow.IsNight && timeNow.Hour < 10 && !waxWarning)
                 {
-                    moonWarning = true;
+                    waxWarning = true;
                     DaggerfallUI.AddHUDText("Secunda is waxing, soon it will be a full moon...");
                 }
                 else if (timeNow.IsDay)
                 {
-                    moonWarning = false;
+                    waxWarning = false;
                 }
             }
             else
             {
-                moonWarning = false;
+                waxWarning = false;
             }
         }
     }
@@ -273,41 +273,72 @@ public class LousyLycans : MonoBehaviour
 
     private static void FullMoon_OnNewMagicRound()
     {
-        if (fullMoon)
+        if (!IsWearingHircineRing() || beastWithRing)
         {
-            DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
-            int timeRaised = 109000 + UnityEngine.Random.Range(10, 400);
-            timeNow.RaiseTime(timeRaised);
-
-            if (playerEnterExit.IsPlayerInside)
-                playerEnterExit.TransitionExterior();
-
-            RandomLocation();
-        }
-
-        if (timeNow.SecundaLunarPhase == LunarPhases.Full || timeNow.MassarLunarPhase == LunarPhases.Full)
-        {
-            if (GameManager.Instance.PlayerEffectManager.HasLycanthropy() && !fullMoon)
+            if (fullMoon)
             {
                 DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
-                fullMoon = true;
-                DaggerfallUI.MessageBox("You dream of the moon.");
-                DropAllItems();
+                int timeRaised = 109000 + UnityEngine.Random.Range(10, 400);
+                timeNow.RaiseTime(timeRaised);
+
+                if (playerEnterExit.IsPlayerInside)
+                    playerEnterExit.TransitionExterior();
+
+                RandomLocation();
+            }
+
+            if (timeNow.SecundaLunarPhase == LunarPhases.Full || timeNow.MassarLunarPhase == LunarPhases.Full)
+            {
+                if (!fullWarning)
+                {
+                    DaggerfallUI.MessageBox("The moon calls to you. You can feel the change is about to happen.");
+                    fullWarning = true;
+                }
+                else if (GameManager.Instance.PlayerEffectManager.HasLycanthropy() && !fullMoon)
+                {
+                    GameManager.Instance.TransportManager.TransportMode = TransportModes.Foot;
+                    DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
+                    fullMoon = true;
+                    DropAllItems();
+                }
+                else
+                {
+                    fullMoon = false;
+                }
             }
             else
             {
                 fullMoon = false;
+                fullWarning = false;
+                beastWithRing = false;
+            }
+            if (killAll && !GameManager.IsGamePaused)
+            {
+                DaggerfallUI.Instance.FadeBehaviour.FadeHUDFromBlack();
+                killAll = false;
+                KillAll();
             }
         }
         else
         {
-            fullMoon = false;
-        }
-        if (killAll && !GameManager.IsGamePaused)
-        {
-            killAll = false;
-            KillAll();
-            DaggerfallUI.Instance.FadeBehaviour.FadeHUDFromBlack();
+            if (timeNow.SecundaLunarPhase == LunarPhases.Full || timeNow.MassarLunarPhase == LunarPhases.Full)
+            {
+                if (!fullWarning)
+                {
+                    DaggerfallUI.MessageBox("The moon calls to you. The Hircine Ring protects you, as long as you stay in your human shape.");
+                    fullWarning = true;
+                }
+                else if (playerEntity.IsInBeastForm)
+                {
+                    beastWithRing = true;
+                }
+            }
+            else
+            {
+                fullMoon = false;
+                fullWarning = false;
+                beastWithRing = false;
+            }
         }
     }
 
@@ -334,8 +365,6 @@ public class LousyLycans : MonoBehaviour
                 dropCollection.RemoveItem(item);
             }
         }
-
-        GameManager.Instance.TransportManager.TransportMode = TransportModes.Foot;
         DaggerfallLoot equipPile = GameObjectHelper.CreateDroppedLootContainer(player, DaggerfallUnity.NextUID);
         equipPile.customDrop = true;
         equipPile.playerOwned = true;
@@ -450,5 +479,22 @@ public class LousyLycans : MonoBehaviour
         Light light = go.GetComponent<Light>();
         light.range = 20;
         return go;
+    }
+
+    private static bool IsWearingHircineRing()
+    {
+        DaggerfallUnityItem[] equipTable = GameManager.Instance.PlayerEntity.ItemEquipTable.EquipTable;
+        if (equipTable == null || equipTable.Length == 0)
+            return false;
+
+        return IsHircineRingItem(equipTable[(int)EquipSlots.Ring0]) || IsHircineRingItem(equipTable[(int)EquipSlots.Ring1]);
+    }
+
+    private static bool IsHircineRingItem(DaggerfallUnityItem item)
+    {
+        return
+            item != null &&
+            item.IsArtifact &&
+            item.ContainsEnchantment(EnchantmentTypes.SpecialArtifactEffect, (short)ArtifactsSubTypes.Hircine_Ring);
     }
 }
