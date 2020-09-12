@@ -120,7 +120,15 @@ public class LousyLycans : MonoBehaviour
             //Code to trigger werewolf infection for testing
             //if (!isWere)
             //{
-            //    EntityEffectBundle bundle = GameManager.Instance.PlayerEffectManager.CreateLycanthropyDisease(LycanthropyTypes.Werewolf);
+            //EntityEffectBundle bundle = GameManager.Instance.PlayerEffectManager.CreateLycanthropyDisease(LycanthropyTypes.Werewolf);
+            //GameManager.Instance.PlayerEffectManager.AssignBundle(bundle, AssignBundleFlags.SpecialInfection);
+            //    isWere = true;
+            //}
+
+            //Code to trigger werewolf infection for testing
+            //if (!isWere)
+            //{
+            //    EntityEffectBundle bundle = GameManager.Instance.PlayerEffectManager.CreateVampirismDisease();
             //    GameManager.Instance.PlayerEffectManager.AssignBundle(bundle, AssignBundleFlags.SpecialInfection);
             //    isWere = true;
             //}
@@ -273,71 +281,80 @@ public class LousyLycans : MonoBehaviour
 
     private static void FullMoon_OnNewMagicRound()
     {
-        if (!IsWearingHircineRing() || beastWithRing)
+        if (GameManager.Instance.PlayerEffectManager.HasLycanthropy())
         {
-            if (fullMoon)
+            if (!IsWearingHircineRing() || beastWithRing)
             {
-                DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
-                int timeRaised = 109000 + UnityEngine.Random.Range(10, 400);
-                timeNow.RaiseTime(timeRaised);
-
-                if (playerEnterExit.IsPlayerInside)
-                    playerEnterExit.TransitionExterior();
-
-                RandomLocation();
-            }
-
-            if (timeNow.SecundaLunarPhase == LunarPhases.Full || timeNow.MassarLunarPhase == LunarPhases.Full)
-            {
-                if (!fullWarning)
+                if (fullMoon)
                 {
-                    DaggerfallUI.MessageBox("The moon calls to you. You can feel the change is about to happen.");
-                    fullWarning = true;
-                }
-                else if (GameManager.Instance.PlayerEffectManager.HasLycanthropy() && !fullMoon)
-                {
-                    GameManager.Instance.TransportManager.TransportMode = TransportModes.Foot;
+                    ModManager.Instance.SendModMessage("TravelOptions", "pauseTravel");
                     DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
-                    fullMoon = true;
-                    DropAllItems();
+                    int timeRaised = 109000 + UnityEngine.Random.Range(10, 400);
+                    timeNow.RaiseTime(timeRaised);
+
+                    if (playerEnterExit.IsPlayerInside)
+                        playerEnterExit.TransitionExterior();
+
+                    RandomLocation();
+                    int roll = UnityEngine.Random.Range(-50, 101);
+                    if (roll < playerEntity.Stats.LiveLuck)
+                        playerEntity.PreventEnemySpawns = true;
+                }
+
+                if (timeNow.SecundaLunarPhase == LunarPhases.Full || timeNow.MassarLunarPhase == LunarPhases.Full)
+                {
+                    if (!fullWarning)
+                    {
+                        DaggerfallUI.MessageBox("The moon calls to you. You can feel the change is about to happen.");
+                        ModManager.Instance.SendModMessage("TravelOptions", "pauseTravel");
+                        fullWarning = true;
+                    }
+                    else if (GameManager.Instance.PlayerEffectManager.HasLycanthropy() && !fullMoon)
+                    {
+                        GameManager.Instance.TransportManager.TransportMode = TransportModes.Foot;
+                        DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
+                        fullMoon = true;
+                        DropAllItems();
+                    }
+                    else
+                    {
+                        fullMoon = false;
+                    }
                 }
                 else
                 {
                     fullMoon = false;
+                    fullWarning = false;
+                    beastWithRing = false;
+                }
+                if (killAll && !GameManager.IsGamePaused)
+                {
+                    DaggerfallUI.Instance.FadeBehaviour.FadeHUDFromBlack();
+                    killAll = false;
+                    KillAll();
                 }
             }
             else
             {
-                fullMoon = false;
-                fullWarning = false;
-                beastWithRing = false;
-            }
-            if (killAll && !GameManager.IsGamePaused)
-            {
-                DaggerfallUI.Instance.FadeBehaviour.FadeHUDFromBlack();
-                killAll = false;
-                KillAll();
-            }
-        }
-        else
-        {
-            if (timeNow.SecundaLunarPhase == LunarPhases.Full || timeNow.MassarLunarPhase == LunarPhases.Full)
-            {
-                if (!fullWarning)
+                if (timeNow.SecundaLunarPhase == LunarPhases.Full || timeNow.MassarLunarPhase == LunarPhases.Full)
                 {
-                    DaggerfallUI.MessageBox("The moon calls to you. The Hircine Ring protects you, as long as you stay in your human shape.");
-                    fullWarning = true;
+                    if (!fullWarning)
+                    {
+                        DaggerfallUI.MessageBox("The moon calls to you. The Hircine Ring protects you, as long as you stay in your human shape.");
+                        ModManager.Instance.SendModMessage("TravelOptions", "pauseTravel");
+                        fullWarning = true;
+                    }
+                    else if (playerEntity.IsInBeastForm)
+                    {
+                        beastWithRing = true;
+                    }
                 }
-                else if (playerEntity.IsInBeastForm)
+                else
                 {
-                    beastWithRing = true;
+                    fullMoon = false;
+                    fullWarning = false;
+                    beastWithRing = false;
                 }
-            }
-            else
-            {
-                fullMoon = false;
-                fullWarning = false;
-                beastWithRing = false;
             }
         }
     }
@@ -346,7 +363,7 @@ public class LousyLycans : MonoBehaviour
     {
         GameObject player = GameManager.Instance.PlayerObject;
         dropCollection = new ItemCollection();
-        ItemCollection questItemsCollection = new ItemCollection();
+        ItemCollection keepItemsCollection = new ItemCollection();
 
         UnequipAll();
 
@@ -355,13 +372,13 @@ public class LousyLycans : MonoBehaviour
         for (int i = 0; i < dropCollection.Count; i++)
         {
             DaggerfallUnityItem item = dropCollection.GetItem(i);
-            if (item.QuestItemSymbol != null || item.IsQuestItem || item.IsSummoned || item.TemplateIndex == 132)
+            if (item.QuestItemSymbol != null || item.IsQuestItem || item.IsSummoned || item.TemplateIndex == 132 || item.TemplateIndex == 93 || item.TemplateIndex == 94)
             {
                 if (item.IsEquipped)
                 {
                     item.UnequipItem(playerEntity);
                 }
-                questItemsCollection.AddItem(item);
+                keepItemsCollection.AddItem(item);
                 dropCollection.RemoveItem(item);
             }
         }
@@ -372,12 +389,12 @@ public class LousyLycans : MonoBehaviour
         playerEntity.Items.Clear();
         dropCollection.Clear();
 
-        for (int i = 0; i < questItemsCollection.Count; i++)
+        for (int i = 0; i < keepItemsCollection.Count; i++)
         {
-            DaggerfallUnityItem item = questItemsCollection.GetItem(i);
+            DaggerfallUnityItem item = keepItemsCollection.GetItem(i);
             playerEntity.Items.AddItem(item);
         }
-        questItemsCollection.Clear();
+        keepItemsCollection.Clear();
     }
 
     private static void UnequipAll()
