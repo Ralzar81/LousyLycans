@@ -41,18 +41,22 @@ public class LousyLycans : MonoBehaviour
         EntityEffectBroker.OnNewMagicRound += WereBuffs_OnNewMagicRound;
         EntityEffectBroker.OnNewMagicRound += WaxingMoon_OnNewMagicRound;
         EntityEffectBroker.OnNewMagicRound += FullMoon_OnNewMagicRound;
+
+        GameManager.Instance.RegisterPreventRestCondition(() => { return FullMoonWake(); }, "You awake with a snarl!");
     }
 
     static PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
     static RaceTemplate playerRace = playerEntity.RaceTemplate;
-    static PlayerEnterExit playerEnterExit = GameManager.Instance.PlayerEnterExit;
     static DaggerfallDateTime timeNow = DaggerfallUnity.Instance.WorldTime.Now;
+    static PlayerEnterExit playerEnterExit = GameManager.Instance.PlayerEnterExit;
     static EntityEffectManager playerEffectManager = playerEntity.EntityBehaviour.GetComponent<EntityEffectManager>();
     static bool waxWarning = false;
     static bool fullWarning = false;
     static bool fullMoon = false;
     static bool nightVision = false;
     static bool beastWithRing = false;
+    static bool horrorWakeup = false;
+    static bool resetBars = false;
     static int strAtt = 0;
     static int intAtt = 0;
     static int wilAtt = 0;
@@ -61,6 +65,7 @@ public class LousyLycans : MonoBehaviour
     static int perAtt = 0;
     static int spdAtt = 0;
     static int skillModAmount = 0;
+    static int dodging = 0;
     static int centaurian = 0;
     static int daedric = 0;
     static int dragonish = 0;
@@ -80,14 +85,25 @@ public class LousyLycans : MonoBehaviour
     static int endPosY = 0;
     private static ItemCollection dropCollection;
 
-    private void Awake()
+    void Awake()
     {
  
     }
 
-    private void Update()
+    void Update()
     {
-        if (playerEntity.IsInBeastForm)
+        if (!DaggerfallUnity.Instance.IsReady || !playerEnterExit || GameManager.IsGamePaused)
+            return;
+
+        if (resetBars)
+        {
+            resetBars = false;
+            playerEntity.CurrentHealth = playerEntity.MaxHealth;
+            playerEntity.CurrentFatigue = playerEntity.MaxFatigue;
+            playerEntity.CurrentMagicka = playerEntity.MaxMagicka;
+        }
+
+        if (playerEntity.IsInBeastForm && !playerEntity.IsResting)
         {
             if (!nightVision)
             {
@@ -100,8 +116,9 @@ public class LousyLycans : MonoBehaviour
                 GameObject lightsNode = new GameObject("NightVision");
                 lightsNode.transform.parent = player.transform;
                 AddLight(DaggerfallUnity.Instance, player.transform.gameObject, lightsNode.transform);
-                DropAllItems();
-                DaggerfallUI.MessageBox("You shed your clothes and items.");
+                playerEntity.CurrentFatigue = playerEntity.MaxFatigue;
+                playerEntity.CurrentMagicka = 0;
+                DropAllItems();                
             }
         }
         else if (nightVision)
@@ -110,34 +127,53 @@ public class LousyLycans : MonoBehaviour
             GameObject lightsNode = GameObject.Find("NightVision");
             Destroy(lightsNode);
         }
+
+        if (horrorWakeup && GameManager.Instance.IsPlayerOnHUD && !DaggerfallUI.Instance.FadeBehaviour.FadeInProgress)
+        {
+            horrorWakeup = false;
+            WakeUp();
+            ResetNeedToKillInnocent();
+            resetBars = true;
+            playerEntity.CurrentHealth = playerEntity.MaxHealth;
+            playerEntity.CurrentFatigue = playerEntity.MaxFatigue;
+            playerEntity.CurrentMagicka = playerEntity.MaxMagicka;
+        }
     }
 
+    private static void WakeUp()
+    {
+        DaggerfallUI.Instance.FadeBehaviour.FadeHUDFromBlack();
+        DaggerfallMessageBox wakePopUp = new DaggerfallMessageBox(DaggerfallUI.UIManager, DaggerfallUI.UIManager.TopWindow);
+        string[] message = {
+                            "You awake, disoriented and naked.",
+                            " ",
+                            "You have lost a day.",
+                            "",
+                            "What horrors did you commit during the full moon...?"
+                        };
+        wakePopUp.SetText(message);
+        wakePopUp.Show();
+        wakePopUp.ClickAnywhereToClose = true;
+    }
 
     private static void WereBuffs_OnNewMagicRound()
     {
         if (!GameManager.IsGamePaused && playerEntity.CurrentHealth > 0 && !GameManager.Instance.EntityEffectBroker.SyntheticTimeIncrease)
         {
-            //Code to trigger werewolf infection for testing
-            //if (!isWere)
+            ////Code to trigger werewolf infection for testing
+            //if (!GameManager.Instance.PlayerEffectManager.HasLycanthropy())
             //{
-            //EntityEffectBundle bundle = GameManager.Instance.PlayerEffectManager.CreateLycanthropyDisease(LycanthropyTypes.Werewolf);
-            //GameManager.Instance.PlayerEffectManager.AssignBundle(bundle, AssignBundleFlags.SpecialInfection);
-            //    isWere = true;
-            //}
-
-            //Code to trigger werewolf infection for testing
-            //if (!isWere)
-            //{
-            //    EntityEffectBundle bundle = GameManager.Instance.PlayerEffectManager.CreateVampirismDisease();
+            //    EntityEffectBundle bundle = GameManager.Instance.PlayerEffectManager.CreateLycanthropyDisease(LycanthropyTypes.Werewolf);
             //    GameManager.Instance.PlayerEffectManager.AssignBundle(bundle, AssignBundleFlags.SpecialInfection);
-            //    isWere = true;
+            //    Debug.Log("Adding Were");
             //}
-
 
             if (GameManager.Instance.PlayerEffectManager.HasLycanthropy())
             {
                 LycanthropyEffect lycanthropyEffect = GameManager.Instance.PlayerEffectManager.GetRacialOverrideEffect() as LycanthropyEffect;
                 LycanthropyTypes lycanthropyTypes = lycanthropyEffect.InfectionType;
+                if (GameManager.Instance.AreEnemiesNearby())
+                    PacifyWere(playerEntity.IsInBeastForm);
 
                 if (lycanthropyTypes == LycanthropyTypes.Werewolf)
                 {
@@ -146,15 +182,14 @@ public class LousyLycans : MonoBehaviour
                         strAtt = -20;
                         agiAtt = 0;
                         endAtt = -20;
-                        spdAtt = +10;
+                        spdAtt = 0;
                     }
                     else
                     {
                         strAtt = -40;
                         agiAtt = -30;
                         endAtt = -40;
-                        spdAtt = -30;
-                        skillModAmount = -25;
+                        spdAtt = -30;                        
                     }
                 }
                 else
@@ -172,11 +207,13 @@ public class LousyLycans : MonoBehaviour
                         agiAtt = -40;
                         endAtt = -30;
                         spdAtt = -40;
-                        skillModAmount = -25;
                     }
                 }
+
                 if (playerEntity.IsInBeastForm)
                 {
+                    skillModAmount = 0;
+                    dodging = 30;
                     centaurian = playerEntity.Skills.GetLiveSkillValue(DFCareer.Skills.Centaurian);
                     daedric = playerEntity.Skills.GetLiveSkillValue(DFCareer.Skills.Daedric);
                     dragonish = playerEntity.Skills.GetLiveSkillValue(DFCareer.Skills.Dragonish);
@@ -191,7 +228,38 @@ public class LousyLycans : MonoBehaviour
                     spriggan = playerEntity.Skills.GetLiveSkillValue(DFCareer.Skills.Spriggan);
                     streetwise = playerEntity.Skills.GetLiveSkillValue(DFCareer.Skills.Streetwise);
                     playerEntity.CurrentMagicka = 0;
+                    playerEntity.CurrentFatigue = playerEntity.MaxFatigue;
                     GameManager.Instance.TransportManager.TransportMode = TransportModes.Foot;
+                    GameObject lightsNode = GameObject.Find("NightVision");
+                    if (lightsNode == null)
+                    {
+                        Debug.Log("lightsNode == null");
+                        nightVision = false;
+                    }
+                }
+                else
+                {
+                    skillModAmount = -25;
+                    dodging = 0;
+                    centaurian =0;
+                    daedric = 0;
+                    dragonish = 0;
+                    etiquette = 0;
+                    giantish = 0;
+                    harpy = 0;
+                    impish = 0;
+                    lockpicking = 0;
+                    nymph = 0;
+                    orcish = 0;
+                    pickpocket = 0;
+                    spriggan = 0;
+                    streetwise = 0;
+                    GameObject lightsNode = GameObject.Find("NightVision");
+                    if (lightsNode != null)
+                    {
+                        nightVision = false;
+                        Destroy(lightsNode);
+                    }
                 }
             }
             else
@@ -217,6 +285,7 @@ public class LousyLycans : MonoBehaviour
             playerEffectManager.MergeDirectStatMods(statMods);
 
             int[] skillMods = new int[DaggerfallSkills.Count];
+            skillMods[(int)DFCareer.Skills.Dodging] = +dodging;
             skillMods[(int)DFCareer.Skills.Swimming] = +skillModAmount;
             skillMods[(int)DFCareer.Skills.Running] = +skillModAmount;
             skillMods[(int)DFCareer.Skills.Stealth] = +skillModAmount;
@@ -241,35 +310,54 @@ public class LousyLycans : MonoBehaviour
         }
     }
 
+    private static void PacifyWere(bool isBeast)
+    {
+        DaggerfallEntityBehaviour[] entityBehaviours = FindObjectsOfType<DaggerfallEntityBehaviour>();
+        for (int i = 0; i < entityBehaviours.Length; i++)
+        {
+            DaggerfallEntityBehaviour entityBehaviour = entityBehaviours[i];
+            if (entityBehaviour.EntityType == EntityTypes.EnemyMonster)
+            {
+
+                EnemyEntity enemyEntity = entityBehaviour.Entity as EnemyEntity;
+                EnemySenses enemySenses = entityBehaviour.GetComponent<EnemySenses>();
+                EnemyMotor enemyMotor = entityBehaviour.GetComponent<EnemyMotor>();
+                if (enemySenses && enemySenses.HasEncounteredPlayer && enemyEntity.MobileEnemy.Team == MobileTeams.Werecreatures && enemyMotor.IsHostile && enemyEntity.MobileEnemy.Team != MobileTeams.PlayerAlly)
+                {
+                    if (isBeast)
+                    {
+                        enemyMotor.IsHostile = false;
+                        DaggerfallUI.AddHUDText("Pacified " + enemyEntity.Name + " using your lycanthropy.");
+                    }
+                }
+            }
+        }
+    }
+
     private static void WaxingMoon_OnNewMagicRound()
     {
-        if (GameManager.Instance.PlayerEffectManager.HasLycanthropy())
-        {
-            if (timeNow.MassarLunarPhase == LunarPhases.ThreeWax)
+        timeNow = DaggerfallUnity.Instance.WorldTime.Now;
+        if (timeNow.MinuteOfDay == 720 || timeNow.MinuteOfDay == 1080)
+            waxWarning = false;
+        if (GameManager.Instance.PlayerEffectManager.HasLycanthropy() && !GameManager.IsGamePaused && !DaggerfallUI.Instance.FadeBehaviour.FadeInProgress)
+        {            
+            if (FullTonight(true) && !waxWarning)
             {
-                if (timeNow.IsNight && timeNow.Hour < 10 && !waxWarning)
-                {
-                    waxWarning = true;
-                    DaggerfallUI.AddHUDText("Masser is waxing, soon it will be a full moon...");
-                }
-                else if (timeNow.IsDay)
-                {
-                    waxWarning = false;
-                }
+                waxWarning = true;
+                DaggerfallUI.AddHUDText("Masser is waxing...");
+                ModManager.Instance.SendModMessage("TravelOptions", "showMessage", "The coming night will have a full moon...");
+                DaggerfallUI.AddHUDText("The coming night will have a full moon.");
+                ModManager.Instance.SendModMessage("TravelOptions", "showMessage", "The coming night will have a full moon.");
             }
-            else if (timeNow.SecundaLunarPhase == LunarPhases.ThreeWax)
+            else if (FullTonight(false) && !waxWarning)
             {
-                if (timeNow.IsNight && timeNow.Hour < 10 && !waxWarning)
-                {
-                    waxWarning = true;
-                    DaggerfallUI.AddHUDText("Secunda is waxing, soon it will be a full moon...");
-                }
-                else if (timeNow.IsDay)
-                {
-                    waxWarning = false;
-                }
+                waxWarning = true;
+                DaggerfallUI.AddHUDText("Secunda is waxing...");
+                ModManager.Instance.SendModMessage("TravelOptions", "showMessage", "The coming night will have a full moon...");
+                DaggerfallUI.AddHUDText("The coming night will have a full moon.");
+                ModManager.Instance.SendModMessage("TravelOptions", "showMessage", "The coming night will have a full moon.");
             }
-            else
+            else if (!FullTonight(true) && !FullTonight(false))
             {
                 waxWarning = false;
             }
@@ -279,9 +367,21 @@ public class LousyLycans : MonoBehaviour
     static bool raiseTime = false;
     static bool movePlayer = false;
 
+    private static bool FullMoonWake()
+    {
+        if (GameManager.Instance.PlayerEffectManager.HasLycanthropy() && (timeNow.SecundaLunarPhase == LunarPhases.Full || timeNow.MassarLunarPhase == LunarPhases.Full))
+        {
+            return true;
+        }
+        else
+            return false;
+    }
+
     private static void FullMoon_OnNewMagicRound()
     {
-        if (GameManager.Instance.PlayerEffectManager.HasLycanthropy())
+        if (!DaggerfallUnity.Instance.IsReady || !playerEnterExit || GameManager.IsGamePaused || DaggerfallUI.Instance.FadeBehaviour.FadeInProgress)
+            return;
+        if (GameManager.Instance.PlayerEffectManager.HasLycanthropy() && !playerEntity.IsResting)
         {
             if (!IsWearingHircineRing() || beastWithRing)
             {
@@ -289,15 +389,22 @@ public class LousyLycans : MonoBehaviour
                 {
                     ModManager.Instance.SendModMessage("TravelOptions", "pauseTravel");
                     DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
+                    if (Dice100.SuccessRoll(playerEntity.Stats.LiveLuck))
+                        playerEntity.PreventEnemySpawns = true;
                     int timeRaised = 109000 + UnityEngine.Random.Range(10, 400);
                     timeNow.RaiseTime(timeRaised);
 
-                    if (playerEnterExit.IsPlayerInside)
-                        playerEnterExit.TransitionExterior();
+                    if (playerEnterExit.IsPlayerInsideDungeon)
+                        DungeonMoon();
+                    else
+                    {
+                        if (playerEnterExit.IsPlayerInside)
+                            playerEnterExit.TransitionExterior();
 
-                    RandomLocation();
-                    int roll = UnityEngine.Random.Range(-50, 101);
-                    if (roll < playerEntity.Stats.LiveLuck)
+                        RandomLocation();
+                    }
+
+                    if (Dice100.SuccessRoll(playerEntity.Stats.LiveLuck))
                         playerEntity.PreventEnemySpawns = true;
                 }
 
@@ -305,7 +412,7 @@ public class LousyLycans : MonoBehaviour
                 {
                     if (!fullWarning)
                     {
-                        DaggerfallUI.MessageBox("The moon calls to you. You can feel the change is about to happen.");
+                        DaggerfallUI.MessageBox("The moon calls to you. You are unable to resist its pull.");
                         ModManager.Instance.SendModMessage("TravelOptions", "pauseTravel");
                         fullWarning = true;
                     }
@@ -314,7 +421,6 @@ public class LousyLycans : MonoBehaviour
                         GameManager.Instance.TransportManager.TransportMode = TransportModes.Foot;
                         DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
                         fullMoon = true;
-                        DropAllItems();
                     }
                     else
                     {
@@ -340,7 +446,7 @@ public class LousyLycans : MonoBehaviour
                 {
                     if (!fullWarning)
                     {
-                        DaggerfallUI.MessageBox("The moon calls to you. The Hircine Ring protects you, as long as you stay in your human shape.");
+                        DaggerfallUI.MessageBox("The moon calls to you, but the Hircine Ring protects you. As long as you stay in your human shape.");
                         ModManager.Instance.SendModMessage("TravelOptions", "pauseTravel");
                         fullWarning = true;
                     }
@@ -361,56 +467,46 @@ public class LousyLycans : MonoBehaviour
 
     private static void DropAllItems()
     {
-        GameObject player = GameManager.Instance.PlayerObject;
-        dropCollection = new ItemCollection();
-        ItemCollection keepItemsCollection = new ItemCollection();
-
         UnequipAll();
 
-        dropCollection.AddItems(playerEntity.Items.CloneAll());
-
-        for (int i = 0; i < dropCollection.Count; i++)
+        GameObject player = GameManager.Instance.PlayerObject;
+        List<DaggerfallUnityItem> dropList = new List<DaggerfallUnityItem>();
+        for (int i = 0; i < playerEntity.Items.Count; i++)
         {
-            DaggerfallUnityItem item = dropCollection.GetItem(i);
+
+            DaggerfallUnityItem item = playerEntity.Items.GetItem(i);
             if (item.QuestItemSymbol != null || item.IsQuestItem || item.IsSummoned || item.TemplateIndex == 132 || item.TemplateIndex == 93 || item.TemplateIndex == 94)
             {
-                if (item.IsEquipped)
-                {
-                    item.UnequipItem(playerEntity);
-                }
-                keepItemsCollection.AddItem(item);
-                dropCollection.RemoveItem(item);
             }
-        }
-        DaggerfallLoot equipPile = GameObjectHelper.CreateDroppedLootContainer(player, DaggerfallUnity.NextUID);
-        equipPile.customDrop = true;
-        equipPile.playerOwned = true;
-        equipPile.Items.AddItems(dropCollection.CloneAll());
-        playerEntity.Items.Clear();
-        dropCollection.Clear();
-
-        for (int i = 0; i < keepItemsCollection.Count; i++)
-        {
-            DaggerfallUnityItem item = keepItemsCollection.GetItem(i);
-            playerEntity.Items.AddItem(item);
-        }
-        keepItemsCollection.Clear();
-    }
-
-    private static void UnequipAll()
-    {
-        foreach (ItemCollection playerItems in new ItemCollection[] { playerEntity.Items })
-        {
-            for (int i = 0; i < playerItems.Count; i++)
+            else
             {
-                DaggerfallUnityItem item = playerItems.GetItem(i);
                 if (item.IsEquipped)
                 {
                     item.currentCondition /= 2;
                 }
+                else
+                {
+                    dropList.Add(item);
+                }
             }
         }
 
+        if (dropList.Count >= 1)
+        {
+            DaggerfallLoot equipPile = GameObjectHelper.CreateDroppedLootContainer(player, DaggerfallUnity.NextUID);
+            equipPile.customDrop = true;
+            equipPile.playerOwned = true;
+
+            foreach (DaggerfallUnityItem item in dropList)
+            {
+                equipPile.Items.Transfer(item, playerEntity.Items);
+            }
+            DaggerfallUI.MessageBox("You tear off your clothes and armor.");
+        }
+    }
+
+    private static void UnequipAll()
+    {
         DaggerfallUnityItem head = playerEntity.ItemEquipTable.GetItem(EquipSlots.Head);
         DaggerfallUnityItem leftArm = playerEntity.ItemEquipTable.GetItem(EquipSlots.LeftArm);
         DaggerfallUnityItem rightArm = playerEntity.ItemEquipTable.GetItem(EquipSlots.RightArm);
@@ -421,9 +517,9 @@ public class LousyLycans : MonoBehaviour
         DaggerfallUnityItem chestC = playerEntity.ItemEquipTable.GetItem(EquipSlots.ChestClothes);
         DaggerfallUnityItem cloak1 = playerEntity.ItemEquipTable.GetItem(EquipSlots.Cloak1);
         DaggerfallUnityItem cloak2 = playerEntity.ItemEquipTable.GetItem(EquipSlots.Cloak2);
+        DaggerfallUnityItem feet = playerEntity.ItemEquipTable.GetItem(EquipSlots.Feet);
         DaggerfallUnityItem legsA = playerEntity.ItemEquipTable.GetItem(EquipSlots.LegsArmor);
         DaggerfallUnityItem legsC = playerEntity.ItemEquipTable.GetItem(EquipSlots.LegsClothes);
-        DaggerfallUnityItem feet = playerEntity.ItemEquipTable.GetItem(EquipSlots.Feet);
 
         playerEntity.ItemEquipTable.UnequipItem(EquipSlots.Head);
         playerEntity.ItemEquipTable.UnequipItem(EquipSlots.LeftArm);
@@ -435,23 +531,9 @@ public class LousyLycans : MonoBehaviour
         playerEntity.ItemEquipTable.UnequipItem(EquipSlots.ChestClothes);
         playerEntity.ItemEquipTable.UnequipItem(EquipSlots.Cloak1);
         playerEntity.ItemEquipTable.UnequipItem(EquipSlots.Cloak2);
+        playerEntity.ItemEquipTable.UnequipItem(EquipSlots.Feet);
         playerEntity.ItemEquipTable.UnequipItem(EquipSlots.LegsArmor);
         playerEntity.ItemEquipTable.UnequipItem(EquipSlots.LegsClothes);
-        playerEntity.ItemEquipTable.UnequipItem(EquipSlots.Feet);
-
-        dropCollection.Transfer(head, playerEntity.Items);
-        dropCollection.Transfer(leftArm, playerEntity.Items);
-        dropCollection.Transfer(rightArm, playerEntity.Items);
-        dropCollection.Transfer(leftHand, playerEntity.Items);
-        dropCollection.Transfer(rightHand, playerEntity.Items);
-        dropCollection.Transfer(gloves, playerEntity.Items);
-        dropCollection.Transfer(chestA, playerEntity.Items);
-        dropCollection.Transfer(chestC, playerEntity.Items);
-        dropCollection.Transfer(cloak1, playerEntity.Items);
-        dropCollection.Transfer(cloak2, playerEntity.Items);
-        dropCollection.Transfer(legsA, playerEntity.Items);
-        dropCollection.Transfer(legsC, playerEntity.Items);
-        dropCollection.Transfer(feet, playerEntity.Items);
     }
 
     private static void RandomLocation()
@@ -472,22 +554,39 @@ public class LousyLycans : MonoBehaviour
             GameManager.Instance.StreamingWorld.TeleportToCoordinates(startX, startY, StreamingWorld.RepositionMethods.DirectionFromStartMarker);
         LycanthropyEffect lycanthropyEffect = GameManager.Instance.PlayerEffectManager.GetRacialOverrideEffect() as LycanthropyEffect;
         lycanthropyEffect.MorphSelf();
+        playerEntity.LastTimePlayerAteOrDrankAtTavern = DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime() - 250;
         killAll = true;
     }
-
-    private static void KillAll()
+    private static void KillAll(bool all = true)        
     {
         DaggerfallEntityBehaviour[] entityBehaviours = FindObjectsOfType<DaggerfallEntityBehaviour>();
-        int count = 0;
-        for (int i = 0; i < entityBehaviours.Length; i++)
+        int length = entityBehaviours.Length;
+        int killed = 0;
+        int mobs = 0;
+        int luck = playerEntity.Stats.LiveLuck/4;
+        for (int i = 0; i < length; i++)
         {
             DaggerfallEntityBehaviour entityBehaviour = entityBehaviours[i];
             if (entityBehaviour.EntityType == EntityTypes.EnemyMonster || entityBehaviour.EntityType == EntityTypes.EnemyClass)
             {
-                entityBehaviour.Entity.SetHealth(0);
-                count++;
+                mobs++;
+                if (all)
+                {
+                    killed++;
+                    entityBehaviour.Entity.SetHealth(0);
+                }
+                else if (Dice100.SuccessRoll(luck))
+                {
+                    killed++;
+                    entityBehaviour.Entity.SetHealth(0);
+                }                  
             }
         }
+        horrorWakeup = true;
+        playerEntity.CurrentHealth = playerEntity.MaxHealth;
+        playerEntity.CurrentFatigue = playerEntity.MaxFatigue;
+        playerEntity.CurrentMagicka = playerEntity.MaxMagicka;
+        DaggerfallUI.Instance.FadeBehaviour.FadeHUDFromBlack();
     }
 
     private static GameObject AddLight(DaggerfallUnity dfUnity, GameObject player, Transform parent)
@@ -513,5 +612,30 @@ public class LousyLycans : MonoBehaviour
             item != null &&
             item.IsArtifact &&
             item.ContainsEnchantment(EnchantmentTypes.SpecialArtifactEffect, (short)ArtifactsSubTypes.Hircine_Ring);
+    }
+
+    private static bool FullTonight(bool isMasser)
+    {
+        int offset = (isMasser) ? 3 : -1;
+        int moonRatio = (timeNow.DayOfYear + timeNow.Year * DaggerfallDateTime.MonthsPerYear * DaggerfallDateTime.DaysPerMonth + offset) % 32;
+        if (moonRatio == 31)
+            return true;
+
+        return false;
+    }
+
+    private static void DungeonMoon()
+    {
+        playerEnterExit.MovePlayerToDungeonStart();
+        LycanthropyEffect lycanthropyEffect = GameManager.Instance.PlayerEffectManager.GetRacialOverrideEffect() as LycanthropyEffect;
+        lycanthropyEffect.MorphSelf();
+        playerEntity.LastTimePlayerAteOrDrankAtTavern = DaggerfallUnity.Instance.WorldTime.DaggerfallDateTime.ToClassicDaggerfallTime() - 250;
+        KillAll(false);
+    }
+
+    private static void ResetNeedToKillInnocent()
+    {
+        LycanthropyEffect lycanthropyEffect = GameManager.Instance.PlayerEffectManager.GetRacialOverrideEffect() as LycanthropyEffect;
+        lycanthropyEffect.UpdateSatiation();
     }
 }

@@ -1,19 +1,21 @@
 {
     "ModTitle": "Lousy Lycans",
-    "ModVersion": "1.0",
+    "ModVersion": "0.6.3",
     "ModAuthor": "Ralzar",
-    "ContactInfo": "www.dfworkshop.net",
-    "DFUnity_Version": "0.10.23",
+    "ContactInfo": "https://forums.dfworkshop.net/",
+    "DFUnity_Version": "0.10.27",
     "ModDescription": "Fleshes out the lycanthropy mechanics.",
     "GUID": "d79e24b9-8a06-404c-b2d2-f7184e8eb7cb",
     "Files": [
-        "Assets/Game/Mods/Lousy Lycans/LousyLycans.cs"
+        "Assets/Game/Mods/Lousy Lycans/LousyLycans.cs",
+        "Assets/Game/Mods/Lousy Lycans/LousyLycans.dfmod.json"
     ],
     "Dependencies": [
         {
             "Name": "realistic wagon",
             "IsOptional": false,
-            "IsPeer": false
+            "IsPeer": false,
+            "Version": "0.4.1"
         }
     ]
 }
