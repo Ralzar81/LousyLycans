@@ -137,6 +137,7 @@ public class LousyLycans : MonoBehaviour
             playerEntity.CurrentHealth = playerEntity.MaxHealth;
             playerEntity.CurrentFatigue = playerEntity.MaxFatigue;
             playerEntity.CurrentMagicka = playerEntity.MaxMagicka;
+            DeadPersonLoot();
         }
     }
 
@@ -364,8 +365,6 @@ public class LousyLycans : MonoBehaviour
         }
     }
 
-    static bool raiseTime = false;
-    static bool movePlayer = false;
 
     private static bool FullMoonWake()
     {
@@ -391,7 +390,9 @@ public class LousyLycans : MonoBehaviour
                     DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
                     if (Dice100.SuccessRoll(playerEntity.Stats.LiveLuck))
                         playerEntity.PreventEnemySpawns = true;
-                    int timeRaised = 109000 + UnityEngine.Random.Range(10, 400);
+                    int timeRaised = 109000 + UnityEngine.Random.Range(1000, 4000);
+                    if (timeNow.IsDay)
+                        timeRaised -= 20000;
                     timeNow.RaiseTime(timeRaised);
 
                     if (playerEnterExit.IsPlayerInsideDungeon)
@@ -490,6 +491,9 @@ public class LousyLycans : MonoBehaviour
                 }
             }
         }
+        DaggerfallUnityItem gold = ItemBuilder.CreateGoldPieces(playerEntity.GoldPieces);
+        dropList.Add(gold);
+        playerEntity.GoldPieces = 0;
 
         if (dropList.Count >= 1)
         {
@@ -563,7 +567,7 @@ public class LousyLycans : MonoBehaviour
         int length = entityBehaviours.Length;
         int killed = 0;
         int mobs = 0;
-        int luck = playerEntity.Stats.LiveLuck/4;
+        int luck = playerEntity.Stats.LiveLuck/4;        
         for (int i = 0; i < length; i++)
         {
             DaggerfallEntityBehaviour entityBehaviour = entityBehaviours[i];
@@ -637,5 +641,34 @@ public class LousyLycans : MonoBehaviour
     {
         LycanthropyEffect lycanthropyEffect = GameManager.Instance.PlayerEffectManager.GetRacialOverrideEffect() as LycanthropyEffect;
         lycanthropyEffect.UpdateSatiation();
+    }
+
+    private static void DeadPersonLoot()
+    {
+        DaggerfallUnityItem pants;
+        DaggerfallUnityItem shoes;
+        DaggerfallUnityItem cloak;
+        if (playerEntity.Gender == Genders.Male)
+        {
+            pants = ItemBuilder.CreateMensClothing((MensClothing)UnityEngine.Random.Range(152, 154), playerEntity.Race);
+            shoes = ItemBuilder.CreateMensClothing((MensClothing)UnityEngine.Random.Range(147, 151), playerEntity.Race);
+            cloak = ItemBuilder.CreateMensClothing(MensClothing.Casual_cloak, playerEntity.Race);
+        }
+        else
+        {
+            pants = ItemBuilder.CreateWomensClothing((WomensClothing)UnityEngine.Random.Range(211, 214), playerEntity.Race);
+            shoes = ItemBuilder.CreateWomensClothing((WomensClothing)UnityEngine.Random.Range(186, 190), playerEntity.Race);
+            cloak = ItemBuilder.CreateWomensClothing(WomensClothing.Casual_cloak, playerEntity.Race);
+        }
+        pants.currentCondition /= 2;
+        shoes.currentCondition /= 2;
+        cloak.currentCondition /= 2;
+        MobileTypes type = (MobileTypes)UnityEngine.Random.Range(128, 147);
+        Vector3 position = GameManager.Instance.PlayerObject.transform.position + (Vector3.forward * 2);
+        GameObject victimMob = GameObjectHelper.CreateEnemy(type.ToString(), type, position);
+        DaggerfallEntity victimEntity = victimMob.GetComponent<DaggerfallEntityBehaviour>().Entity;
+        victimEntity.Items.AddItem(pants);
+        victimEntity.Items.AddItem(shoes);
+        victimEntity.SetHealth(0);
     }
 }
